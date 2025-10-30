@@ -42,6 +42,7 @@ export default function Index() {
   const flatListRef = useRef(null);
   const [friendCount, setFriendCount] = useState(0);
   const [selectedChat, setSelectedChat] = useState(null);
+  const [isSettingOpen, setIsSettingOpen] = useState(false);
 
   // 🆕 Thêm ref để điều khiển BottomSheet
   const bottomSheetRef = useRef(null);
@@ -60,6 +61,7 @@ export default function Index() {
 
   const openSettingScreen = () => {
     settingsSheetRef.current?.snapToIndex(0);
+    setIsSettingOpen(true);
   };
 
   const closeSettingScreen = () => {
@@ -149,7 +151,7 @@ export default function Index() {
   const startX = useSharedValue(translateX.value);
 
   const panGestureHorizontal = Gesture.Pan()
-    .enabled(!isPreviewOpen && !isKeyboardOpen)
+    .enabled(!isPreviewOpen && !isKeyboardOpen && !isSettingOpen)
     .activeOffsetX([-5, 5])
     .onBegin(() => (startX.value = translateX.value))
     .onUpdate((event) => {
@@ -298,9 +300,7 @@ export default function Index() {
           backgroundStyle={styles.bottomSheetBackground}
         >
           {/* BottomSheetView tối ưu hóa cho nội dung cuộn bên trong */}
-          <BottomSheetView style={styles.contentContainer}>
-            <FriendScreen />
-          </BottomSheetView>
+          <FriendScreen />
         </BottomSheet>
 
         {/* 2. 🆕 BottomSheet cho SettingScreen (ĐÃ SỬA LỖI CẤU TRÚC) */}
@@ -311,11 +311,10 @@ export default function Index() {
           enablePanDownToClose={true}
           handleIndicatorStyle={styles.handleIndicator}
           backgroundStyle={styles.bottomSheetBackground}
+          onChange={(index) => setIsSettingOpen(index !== -1)}
         >
           {/* ✅ SỬA: Đặt SettingScreen vào bên trong BottomSheetView */}
-          <BottomSheetView style={styles.contentContainer}>
-            <SettingScreen />
-          </BottomSheetView>
+          <SettingScreen />
         </BottomSheet>
 
         {isKeyboardOpen && !isPreviewOpen && currentIndex.value !== 3 && (
