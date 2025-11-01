@@ -13,8 +13,8 @@ import Animated, {
   useAnimatedStyle,
   withTiming,
 } from "react-native-reanimated";
-import { Gesture } from "react-native-gesture-handler"; // Giữ lại Gesture cho panGestureHorizontal
 import {
+  Gesture,
   GestureHandlerRootView,
   GestureDetector,
 } from "react-native-gesture-handler";
@@ -42,30 +42,20 @@ export default function Index() {
   const flatListRef = useRef(null);
   const [friendCount, setFriendCount] = useState(0);
   const [selectedChat, setSelectedChat] = useState(null);
-  const [isSettingOpen, setIsSettingOpen] = useState(false);
 
-  // 🆕 Thêm ref để điều khiển BottomSheet
   const bottomSheetRef = useRef(null);
 
-  // 🆕 Định nghĩa các điểm neo (snap points) cho BottomSheet
   const snapPoints = useMemo(() => ["93%"], []);
-  const initialSnapIndex = -1; // -1: Ẩn hoàn toàn
-
+  const initialSnapIndex = -1;
   // 🆕 Hàm mở màn hình bạn bè
   const openFriendScreen = () => {
-    // Kích hoạt snap point 90% (gần đầy màn hình)
-    bottomSheetRef.current?.snapToIndex(1);
+    bottomSheetRef.current?.snapToIndex(0);
   };
 
   const settingsSheetRef = useRef(null);
 
   const openSettingScreen = () => {
     settingsSheetRef.current?.snapToIndex(0);
-    setIsSettingOpen(true);
-  };
-
-  const closeSettingScreen = () => {
-    settingsSheetRef.current?.close();
   };
 
   // ============= PHẦN LOGIC KHÔNG ĐỔI =============
@@ -151,7 +141,7 @@ export default function Index() {
   const startX = useSharedValue(translateX.value);
 
   const panGestureHorizontal = Gesture.Pan()
-    .enabled(!isPreviewOpen && !isKeyboardOpen && !isSettingOpen)
+    .enabled(!isPreviewOpen && !isKeyboardOpen)
     .activeOffsetX([-5, 5])
     .onBegin(() => (startX.value = translateX.value))
     .onUpdate((event) => {
@@ -296,22 +286,26 @@ export default function Index() {
           index={initialSnapIndex} // Bắt đầu ẩn hoàn toàn
           snapPoints={snapPoints}
           enablePanDownToClose={true} // ✅ Cho phép vuốt xuống để đóng an toàn
+          enableDynamicSizing={false}
           handleIndicatorStyle={styles.handleIndicator}
           backgroundStyle={styles.bottomSheetBackground}
         >
           {/* BottomSheetView tối ưu hóa cho nội dung cuộn bên trong */}
+          <BottomSheetView style={styles.contentContainer}>
+            <FriendScreen />
+          </BottomSheetView>
           <FriendScreen />
         </BottomSheet>
 
         {/* 2. 🆕 BottomSheet cho SettingScreen (ĐÃ SỬA LỖI CẤU TRÚC) */}
         <BottomSheet
-          ref={settingsSheetRef} // 🆕 Ref mới, dùng cho SettingScreen
+          ref={settingsSheetRef}
           index={initialSnapIndex}
           snapPoints={snapPoints}
           enablePanDownToClose={true}
+          enableDynamicSizing={false}
           handleIndicatorStyle={styles.handleIndicator}
           backgroundStyle={styles.bottomSheetBackground}
-          onChange={(index) => setIsSettingOpen(index !== -1)}
         >
           {/* ✅ SỬA: Đặt SettingScreen vào bên trong BottomSheetView */}
           <SettingScreen />
@@ -340,7 +334,6 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
     zIndex: 9999,
   },
-  // 🆕 Styles mới cho BottomSheet
   bottomSheetBackground: {
     backgroundColor: "#2f2f2f",
   },
@@ -350,5 +343,4 @@ const styles = StyleSheet.create({
   contentContainer: {
     flex: 1,
   },
-  // 🗑️ Đã xóa: friendSheet và handleBar styles cũ không cần thiết
 });

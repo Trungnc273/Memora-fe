@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "expo-router";
 import {
   View,
@@ -12,6 +12,72 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { jwtDecode } from "jwt-decode";
+
+// Memoized sub-component cho MonthBox để tránh re-render không cần thiết
+const MonthBox = React.memo(({ month, dayImages }) => {
+  const daysArray = useMemo(
+    () => getDaysArray(month.year, month.monthIndex),
+    [month.year, month.monthIndex]
+  );
+  const weeks = useMemo(() => splitWeeks(daysArray), [daysArray]);
+
+  return (
+    <View style={styles.monthBox}>
+      <View style={styles.monthHeader}>
+        <Text style={styles.monthTitle}>{month.name}</Text>
+      </View>
+      <View style={{ padding: 10 }}>
+        {weeks.map((week, wIndex) => (
+          <View key={wIndex} style={styles.weekRow}>
+            {week.map((day, dIndex) => {
+              const key = day
+                ? `${month.year}-${month.monthIndex}-${day}`
+                : null;
+              const imageUrl = key ? dayImages[key] : null;
+
+              return (
+                <View key={dIndex} style={styles.dayCell}>
+                  {imageUrl ? (
+                    <Image
+                      source={{ uri: `${imageUrl}?t=${Date.now()}` }}
+                      style={styles.dotImage}
+                    />
+                  ) : day ? (
+                    <View style={styles.dot} />
+                  ) : null}
+                </View>
+              );
+            })}
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+});
+
+MonthBox.displayName = "MonthBox";
+
+// Utility functions (memoized nếu cần, nhưng ở đây là pure functions)
+const getDaysArray = (year, monthIndex) => {
+  const days = [];
+  const firstDay = new Date(year, monthIndex, 1).getDay();
+  const lastDate = new Date(year, monthIndex + 1, 0).getDate();
+
+  for (let i = 0; i < firstDay; i++) days.push(null);
+  for (let i = 1; i <= lastDate; i++) days.push(i);
+  return days;
+};
+
+const splitWeeks = (daysArray) => {
+  const weeks = [];
+  for (let i = 0; i < daysArray.length; i += 7) {
+    const week = daysArray.slice(i, i + 7);
+    while (week.length < 7) week.push(null);
+    weeks.push(week);
+  }
+  return weeks;
+};
+
 export default function ProfileScreen({
   onGoHome,
   refreshFlag,
@@ -26,7 +92,8 @@ export default function ProfileScreen({
   const [user, setUser] = useState(null);
   const router = useRouter();
 
-  const fetchPosts = async () => {
+  // Memoized fetchPosts với useCallback để tránh re-fetch không cần
+  const fetchPosts = useCallback(async () => {
     try {
       const token = await AsyncStorage.getItem("token");
       if (!token) {
@@ -41,16 +108,18 @@ export default function ProfileScreen({
       const data = await res.json();
 
       if (data?.data) {
-        const posts = data.data.sort(
+        const sortedPosts = data.data.sort(
           (a, b) =>
             new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         );
-        setPosts(posts);
+        setPosts(sortedPosts);
 
-        if (posts.length > 0) {
-          const firstDate = new Date(posts[0].created_at);
+        if (sortedPosts.length > 0) {
+          const firstDate = new Date(sortedPosts[0].created_at);
           setFirstPostDate(firstDate);
           generateMonths(firstDate);
+        } else {
+          setMonths([]);
         }
       }
     } catch (error) {
@@ -58,9 +127,10 @@ export default function ProfileScreen({
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const generateMonths = (startDate) => {
+  // Memoized generateMonths
+  const generateMonths = useCallback((startDate) => {
     const now = new Date();
     const monthsList = [];
 
@@ -88,13 +158,14 @@ export default function ProfileScreen({
     }
 
     setMonths(monthsList);
-  };
+  }, []);
 
+  // Effect cho fetchPosts, chỉ depend refreshFlag
   useEffect(() => {
     fetchPosts();
-  }, [refreshFlag]);
+  }, [fetchPosts, refreshFlag]);
 
-  //Load user
+  // Load user (không depend vào props khác)
   useEffect(() => {
     const loadUser = async () => {
       const token = await AsyncStorage.getItem("token");
@@ -111,9 +182,9 @@ export default function ProfileScreen({
     loadUser();
   }, []);
 
-  // 🔹 Lấy ảnh mới nhất mỗi ngày
-  useEffect(() => {
-    if (posts.length === 0 || months.length === 0) return;
+  // Memoized computation cho dayImages (chỉ recompute khi posts hoặc months thay đổi)
+  const computedDayImages = useMemo(() => {
+    if (posts.length === 0 || months.length === 0) return {};
     const images = {};
     for (const m of months) {
       const daysArray = getDaysArray(m.year, m.monthIndex);
@@ -140,28 +211,29 @@ export default function ProfileScreen({
         }
       }
     }
-    setDayImages(images);
+    return images;
   }, [posts, months]);
 
-  const getDaysArray = (year, monthIndex) => {
-    const days = [];
-    const firstDay = new Date(year, monthIndex, 1).getDay();
-    const lastDate = new Date(year, monthIndex + 1, 0).getDate();
+  // Effect để set dayImages sau khi compute
+  useEffect(() => {
+    setDayImages(computedDayImages);
+  }, [computedDayImages]);
 
-    for (let i = 0; i < firstDay; i++) days.push(null);
-    for (let i = 1; i <= lastDate; i++) days.push(i);
-    return days;
-  };
-
-  const splitWeeks = (daysArray) => {
-    const weeks = [];
-    for (let i = 0; i < daysArray.length; i += 7) {
-      const week = daysArray.slice(i, i + 7);
-      while (week.length < 7) week.push(null);
-      weeks.push(week);
+  // Memoized infoText để tránh re-render
+  const infoText = useMemo(() => {
+    if (firstPostDate) {
+      return (
+        <Text style={styles.infoText}>
+          Locket đầu tiên của bạn đã được gửi vào{" "}
+          <Text style={{ fontWeight: "600" }}>
+            ngày {firstPostDate.getDate()} tháng {firstPostDate.getMonth() + 1},{" "}
+            {firstPostDate.getFullYear()}
+          </Text>
+        </Text>
+      );
     }
-    return weeks;
-  };
+    return <Text style={styles.infoText}>Chưa có Locket nào được gửi.</Text>;
+  }, [firstPostDate]);
 
   if (loading) {
     return (
@@ -212,61 +284,27 @@ export default function ProfileScreen({
         contentContainerStyle={{ paddingBottom: 80 }}
         showsVerticalScrollIndicator={false}
       >
-        {firstPostDate ? (
-          <Text style={styles.infoText}>
-            Locket đầu tiên của bạn đã được gửi vào{" "}
-            <Text style={{ fontWeight: "600" }}>
-              ngày {firstPostDate.getDate()} tháng{" "}
-              {firstPostDate.getMonth() + 1}, {firstPostDate.getFullYear()}
-            </Text>
-          </Text>
-        ) : (
-          <Text style={styles.infoText}>Chưa có Locket nào được gửi.</Text>
-        )}
+        {infoText}
 
-        {months.map((m, i) => {
-          const daysArray = getDaysArray(m.year, m.monthIndex);
-          const weeks = splitWeeks(daysArray);
-
-          return (
-            <View key={i} style={styles.monthBox}>
-              <View style={styles.monthHeader}>
-                <Text style={styles.monthTitle}>{m.name}</Text>
-              </View>
-              <View style={{ padding: 10 }}>
-                {weeks.map((week, wIndex) => (
-                  <View key={wIndex} style={styles.weekRow}>
-                    {week.map((day, dIndex) => {
-                      const key = day
-                        ? `${m.year}-${m.monthIndex}-${day}`
-                        : null;
-                      const imageUrl = key ? dayImages[key] : null;
-
-                      return (
-                        <View key={dIndex} style={styles.dayCell}>
-                          {imageUrl ? (
-                            <Image
-                              source={{ uri: `${imageUrl}?t=${Date.now()}` }}
-                              style={styles.dotImage}
-                            />
-                          ) : day ? (
-                            <View style={styles.dot} />
-                          ) : null}
-                        </View>
-                      );
-                    })}
-                  </View>
-                ))}
-              </View>
-            </View>
-          );
-        })}
+        {months.map((month, i) => (
+          <MonthBox
+            key={`${month.year}-${month.monthIndex}`}
+            month={month}
+            dayImages={dayImages}
+          />
+        ))}
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#0d0d0d",
+  },
   container: { flex: 1, backgroundColor: "#0d0d0d", paddingTop: 60 },
   header: {
     flexDirection: "row",

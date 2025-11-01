@@ -1,291 +1,331 @@
 // File: SettingsScreen.js
 
-import React, { useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  SafeAreaView,
-  Switch,
-} from "react-native";
+import React, { useState, memo } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, Switch } from "react-native";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import {
   Ionicons,
   FontAwesome,
   MaterialCommunityIcons,
 } from "@expo/vector-icons";
 
-// Component đại diện cho một mục cài đặt (hàng)
-const SettingsItem = ({
-  iconName,
-  iconLibrary,
-  text,
-  onPress,
-  isDanger = false,
-  isSwitch = false,
-  switchValue,
-  onSwitchChange,
-  hideArrow = false,
-  isLast = false,
-}) => {
-  const IconComponent =
-    iconLibrary === "Ionicons"
-      ? Ionicons
-      : iconLibrary === "FontAwesome"
-      ? FontAwesome
-      : MaterialCommunityIcons;
+// Config dữ liệu cho các nhóm và items (data-driven approach để dễ maintain và giảm hardcode)
+const SETTINGS_CONFIG = [
+  {
+    title: "Tổng quát",
+    items: [
+      {
+        iconName: "calendar-outline",
+        iconLibrary: "Ionicons",
+        text: "Sửa ngày sinh",
+        onPressKey: "Sửa ngày sinh",
+      },
+      {
+        iconName: "text-outline",
+        iconLibrary: "Ionicons",
+        text: "Sửa tên",
+        onPressKey: "Sửa tên",
+      },
+      {
+        iconName: "person-circle-outline",
+        iconLibrary: "Ionicons",
+        text: "Edit profile photo",
+        onPressKey: "Edit profile photo",
+      },
+      {
+        iconName: "mail-outline",
+        iconLibrary: "Ionicons",
+        text: "Add email address",
+        onPressKey: "Add email address",
+        isLast: true,
+      },
+    ],
+  },
+  {
+    title: "Hỗ trợ",
+    items: [
+      {
+        iconName: "alert-circle-outline",
+        iconLibrary: "Ionicons",
+        text: "Báo cáo sự cố",
+        onPressKey: "Báo cáo sự cố",
+      },
+      {
+        iconName: "chatbox-outline",
+        iconLibrary: "Ionicons",
+        text: "Gửi đề xuất",
+        onPressKey: "Gửi đề xuất",
+      },
+      {
+        iconName: "refresh-circle-outline",
+        iconLibrary: "Ionicons",
+        text: "Khôi phục đơn hàng",
+        onPressKey: "Khôi phục đơn hàng",
+        isLast: true,
+      },
+    ],
+  },
+  {
+    title: "Riêng tư & bảo mật",
+    items: [
+      {
+        iconName: "ios-person-remove-outline",
+        iconLibrary: "Ionicons",
+        text: "Tài khoản đã bị chặn",
+        onPressKey: "Tài khoản đã bị chặn",
+      },
+      {
+        iconName: "checkmark-circle-outline",
+        iconLibrary: "Ionicons",
+        text: "Send read receipts",
+        isSwitch: true,
+        switchValueKey: "readReceiptsEnabled", // Key để map state
+        hideArrow: true,
+      },
+      {
+        iconName: "eye-outline",
+        iconLibrary: "Ionicons",
+        text: "Hiển thị tài khoản",
+        onPressKey: "Hiển thị",
+        isLast: true,
+      },
+    ],
+  },
+  {
+    title: "Giới thiệu",
+    items: [
+      {
+        iconName: "logo-tiktok",
+        iconLibrary: "Ionicons",
+        text: "TikTok",
+        onPressKey: "TikTok",
+      },
+      {
+        iconName: "logo-instagram",
+        iconLibrary: "Ionicons",
+        text: "Instagram",
+        onPressKey: "Instagram",
+      },
+      {
+        iconName: "logo-twitter",
+        iconLibrary: "Ionicons",
+        text: "X (Twitter)",
+        onPressKey: "X (Twitter)",
+      },
+      {
+        iconName: "share-outline",
+        iconLibrary: "Ionicons",
+        text: "Chia sẻ Locket",
+        onPressKey: "Chia sẻ Locket",
+      },
+      {
+        iconName: "star-outline",
+        iconLibrary: "Ionicons",
+        text: "Đánh giá Locket",
+        onPressKey: "Đánh giá Locket",
+      },
+      {
+        iconName: "document-text-outline",
+        iconLibrary: "Ionicons",
+        text: "Điều khoản dịch vụ",
+        onPressKey: "Điều khoản dịch vụ",
+      },
+      {
+        iconName: "lock-closed-outline",
+        iconLibrary: "Ionicons",
+        text: "Chính sách quyền riêng tư",
+        onPressKey: "Chính sách quyền riêng tư",
+        isLast: true,
+      },
+    ],
+  },
+  {
+    title: "Vùng nguy hiểm",
+    items: [
+      {
+        iconName: "trash-can-outline",
+        iconLibrary: "MaterialCommunityIcons",
+        text: "Xóa tài khoản",
+        onPressKey: "Xóa tài khoản",
+        isDanger: true,
+      },
+      {
+        iconName: "logout",
+        iconLibrary: "MaterialCommunityIcons",
+        text: "Đăng xuất",
+        onPressKey: "Đăng xuất",
+        isDanger: true,
+        isLast: true,
+      },
+    ],
+  },
+];
 
-  // 🔄 Xác định màu icon (Trắng cho mặc định, Đỏ cho Danger)
-  const iconColor = isDanger ? "#FF3B30" : "#fff";
+// Memoized component cho SettingsItem để tối ưu re-render (chỉ re-render khi props thay đổi)
+const SettingsItem = memo(
+  ({
+    iconName,
+    iconLibrary,
+    text,
+    onPress,
+    isDanger = false,
+    isSwitch = false,
+    switchValue,
+    onSwitchChange,
+    hideArrow = false,
+    isLast = false,
+  }) => {
+    const IconComponent =
+      {
+        Ionicons,
+        FontAwesome,
+        MaterialCommunityIcons,
+      }[iconLibrary] || MaterialCommunityIcons;
 
-  return (
-    <TouchableOpacity
-      style={[styles.item, isLast && styles.lastItem]}
-      onPress={onPress}
-      disabled={isSwitch} // Vô hiệu hóa press cho hàng chứa Switch
-    >
-      <View style={styles.itemLeft}>
-        {/* ❌ Đã XÓA iconContainer và defaultIconBg/dangerIconBg */}
-        {/* Chỉ giữ lại Icon */}
-        <IconComponent
-          name={iconName}
-          size={22} // Tăng kích thước icon một chút cho dễ nhìn
-          color={iconColor}
-          style={styles.iconStyle} // 🆕 Thêm style để căn chỉnh
-        />
+    const iconColor = isDanger ? "#FF3B30" : "#fff";
 
-        {/* Text */}
-        <Text
-          style={[styles.itemText, isDanger && styles.dangerText]}
-          numberOfLines={1}
-        >
-          {text}
-        </Text>
-      </View>
+    return (
+      <TouchableOpacity
+        style={[styles.item, isLast && styles.lastItem]}
+        onPress={onPress}
+        disabled={isSwitch}
+        accessibilityRole="button"
+        accessibilityLabel={text}
+      >
+        <View style={styles.itemLeft}>
+          <IconComponent
+            name={iconName}
+            size={22}
+            color={iconColor}
+            style={styles.iconStyle}
+          />
+          <Text
+            style={[styles.itemText, isDanger && styles.dangerText]}
+            numberOfLines={1}
+            accessibilityLabel={text}
+          >
+            {text}
+          </Text>
+        </View>
+        {isSwitch ? (
+          <Switch
+            trackColor={{ false: "#767577", true: "#34C759" }}
+            thumbColor={switchValue ? "#fff" : "#f4f3f4"}
+            onValueChange={onSwitchChange}
+            value={switchValue}
+            accessibilityRole="switch"
+            accessibilityLabel={`${text} ${switchValue ? "on" : "off"}`}
+          />
+        ) : (
+          !hideArrow && (
+            <Ionicons name="chevron-forward" size={20} color="#999" />
+          )
+        )}
+      </TouchableOpacity>
+    );
+  }
+);
 
-      {/* Switch hoặc Arrow */}
-      {isSwitch ? (
-        <Switch
-          trackColor={{ false: "#767577", true: "#34C759" }}
-          thumbColor={switchValue ? "#fff" : "#f4f3f4"}
-          onValueChange={onSwitchChange}
-          value={switchValue}
-        />
-      ) : (
-        !hideArrow && <Ionicons name="chevron-forward" size={20} color="#999" />
-      )}
-    </TouchableOpacity>
-  );
-};
+SettingsItem.displayName = "SettingsItem";
 
-// Component đại diện cho một nhóm cài đặt (View bo tròn chứa các hàng)
-const SettingsGroup = ({ title, children }) => (
+// Memoized component cho SettingsGroup
+const SettingsGroup = memo(({ title, children }) => (
   <View style={styles.groupContainer}>
     {title && <Text style={styles.groupTitle}>{title}</Text>}
     <View style={styles.groupList}>{children}</View>
   </View>
-);
+));
+
+SettingsGroup.displayName = "SettingsGroup";
 
 export default function SettingsScreen() {
-  // State giả định cho Switch
-  const [readReceiptsEnabled, setReadReceiptsEnabled] = useState(true);
+  // State cho switches (dùng object để dễ mở rộng nếu có nhiều switch)
+  const [switches, setSwitches] = useState({
+    readReceiptsEnabled: true,
+  });
 
-  // Hàm xử lý chung (chỉ để hiển thị log hoặc điều hướng)
-  const handlePress = (item) => {
-    console.log(`Pressed: ${item}`);
-    // navigation.navigate(item);
+  // Hàm xử lý onPress chung
+  const handlePress = (key) => {
+    console.log(`Pressed: ${key}`);
+    // navigation.navigate(key); // Uncomment khi cần
   };
 
+  // Hàm xử lý switch change
+  const handleSwitchChange = (key, value) => {
+    setSwitches((prev) => ({ ...prev, [key]: value }));
+  };
+
+  // Render items từ config
+  const renderItems = (items, index) => (
+    <>
+      {items.map((item, itemIndex) => {
+        const isLast = item.isLast || itemIndex === items.length - 1;
+        const key = `${index}-${itemIndex}`;
+
+        if (item.isSwitch) {
+          return (
+            <SettingsItem
+              key={key}
+              {...item}
+              onPress={undefined}
+              switchValue={switches[item.switchValueKey]}
+              onSwitchChange={(value) =>
+                handleSwitchChange(item.switchValueKey, value)
+              }
+              isLast={isLast}
+            />
+          );
+        }
+
+        return (
+          <SettingsItem
+            key={key}
+            {...item}
+            onPress={() => handlePress(item.onPressKey)}
+            isLast={isLast}
+          />
+        );
+      })}
+    </>
+  );
+
   return (
-    // Sử dụng SafeAreaView và ScrollView để tạo hiệu ứng cuộn và đảm bảo hiển thị đúng
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView
-        contentContainerStyle={styles.container}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* 🆕 Thay đổi màu nền của HeaderTitle thành màu tối để khớp với nền BottomSheet */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Settings</Text>
-        </View>
+    <BottomSheetScrollView
+      style={styles.scrollView}
+      contentContainerStyle={styles.container}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Settings</Text>
+      </View>
 
-        {/* ======================================================= */}
-        {/* Trang 2 (Tổng quát) - Cần cuộn lên để thấy */}
-        {/* ======================================================= */}
-
-        <SettingsGroup title="Tổng quát">
-          <SettingsItem
-            iconName="calendar-outline"
-            iconLibrary="Ionicons"
-            text="Sửa ngày sinh"
-            onPress={() => handlePress("Sửa ngày sinh")}
-          />
-          <SettingsItem
-            iconName="text-outline"
-            iconLibrary="Ionicons"
-            text="Sửa tên"
-            onPress={() => handlePress("Sửa tên")}
-          />
-          <SettingsItem
-            iconName="person-circle-outline"
-            iconLibrary="Ionicons"
-            text="Edit profile photo"
-            onPress={() => handlePress("Edit profile photo")}
-          />
-          <SettingsItem
-            iconName="mail-outline"
-            iconLibrary="Ionicons"
-            text="Add email address"
-            onPress={() => handlePress("Add email address")}
-            isLast={true}
-          />
+      {SETTINGS_CONFIG.map((group, index) => (
+        <SettingsGroup key={group.title || index} title={group.title}>
+          {renderItems(group.items, index)}
         </SettingsGroup>
+      ))}
 
-        <SettingsGroup title="Hỗ trợ">
-          <SettingsItem
-            iconName="alert-circle-outline"
-            iconLibrary="Ionicons"
-            text="Báo cáo sự cố"
-            onPress={() => handlePress("Báo cáo sự cố")}
-          />
-          <SettingsItem
-            iconName="chatbox-outline"
-            iconLibrary="Ionicons"
-            text="Gửi đề xuất"
-            onPress={() => handlePress("Gửi đề xuất")}
-          />
-          <SettingsItem
-            iconName="refresh-circle-outline"
-            iconLibrary="Ionicons"
-            text="Khôi phục đơn hàng"
-            onPress={() => handlePress("Khôi phục đơn hàng")}
-            isLast={true}
-          />
-        </SettingsGroup>
-
-        <SettingsGroup title="Riêng tư & bảo mật">
-          <SettingsItem
-            iconName="ios-person-remove-outline"
-            iconLibrary="Ionicons"
-            text="Tài khoản đã bị chặn"
-            onPress={() => handlePress("Tài khoản đã bị chặn")}
-          />
-          <SettingsItem
-            iconName="checkmark-circle-outline"
-            iconLibrary="Ionicons"
-            text="Send read receipts"
-            isSwitch={true}
-            switchValue={readReceiptsEnabled}
-            onSwitchChange={setReadReceiptsEnabled}
-            hideArrow={true}
-          />
-          {/* Mục "Hiển thị..." có thể được đặt ở đây nếu cần */}
-          <SettingsItem
-            iconName="eye-outline"
-            iconLibrary="Ionicons"
-            text="Hiển thị tài khoản"
-            onPress={() => handlePress("Hiển thị")}
-            isLast={true}
-          />
-        </SettingsGroup>
-
-        {/* ======================================================= */}
-        {/* Trang 1 (Giới thiệu) - Cần cuộn xuống để thấy */}
-        {/* ======================================================= */}
-
-        <SettingsGroup title="Giới thiệu">
-          <SettingsItem
-            iconName="logo-tiktok"
-            iconLibrary="Ionicons"
-            text="TikTok"
-            onPress={() => handlePress("TikTok")}
-          />
-          <SettingsItem
-            iconName="logo-instagram"
-            iconLibrary="Ionicons"
-            text="Instagram"
-            onPress={() => handlePress("Instagram")}
-          />
-          <SettingsItem
-            iconName="logo-twitter"
-            iconLibrary="Ionicons"
-            text="X (Twitter)"
-            onPress={() => handlePress("X (Twitter)")}
-          />
-          <SettingsItem
-            iconName="share-outline"
-            iconLibrary="Ionicons"
-            text="Chia sẻ Locket"
-            onPress={() => handlePress("Chia sẻ Locket")}
-          />
-          <SettingsItem
-            iconName="star-outline"
-            iconLibrary="Ionicons"
-            text="Đánh giá Locket"
-            onPress={() => handlePress("Đánh giá Locket")}
-          />
-          <SettingsItem
-            iconName="document-text-outline"
-            iconLibrary="Ionicons"
-            text="Điều khoản dịch vụ"
-            onPress={() => handlePress("Điều khoản dịch vụ")}
-          />
-          <SettingsItem
-            iconName="lock-closed-outline"
-            iconLibrary="Ionicons"
-            text="Chính sách quyền riêng tư"
-            onPress={() => handlePress("Chính sách quyền riêng tư")}
-            isLast={true}
-          />
-        </SettingsGroup>
-
-        <SettingsGroup title="Vùng nguy hiểm">
-          <SettingsItem
-            iconName="trash-can-outline"
-            iconLibrary="MaterialCommunityIcons"
-            text="Xóa tài khoản"
-            onPress={() => handlePress("Xóa tài khoản")}
-            isDanger={true}
-          />
-          <SettingsItem
-            iconName="logout" // Đã đổi icon cho phù hợp với MaterialCommunityIcons
-            iconLibrary="MaterialCommunityIcons"
-            text="Đăng xuất"
-            onPress={() => handlePress("Đăng xuất")}
-            isDanger={true}
-            isLast={true}
-          />
-        </SettingsGroup>
-
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            Dữ liệu thời tiết được cung cấp bởi  Weather
-          </Text>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>
+          Dữ liệu thời tiết được cung cấp bởi  Weather
+        </Text>
+      </View>
+    </BottomSheetScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  scrollView: {
     flex: 1,
-    // 1. ✅ Nền BottomSheet (được set trong index.js là #2f2f2f)
-    // Nhưng vì component này được bọc trong BottomSheetView,
-    // chúng ta chỉ cần đảm bảo màu nền chính là màu nền của BottomSheetView
-    backgroundColor: "#2C2C2C",
   },
   container: {
     paddingHorizontal: 16,
     paddingBottom: 40,
-    // 🆕 Đặt nền ở đây nếu bạn muốn ScrollView có màu nền.
-    // Tuy nhiên, việc này thường được xử lý bởi BottomSheetView chứa nó.
+    backgroundColor: "#2C2C2C",
   },
   header: {
     paddingTop: 10,
     paddingBottom: 5,
-    // 🆕 Giả định bạn không muốn thanh header này có màu nền khác
   },
   headerTitle: {
     fontSize: 17,
@@ -294,7 +334,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingVertical: 12,
   },
-  // Nhóm Cài đặt
   groupContainer: {
     marginBottom: 20,
     marginTop: 10,
@@ -302,17 +341,16 @@ const styles = StyleSheet.create({
   groupTitle: {
     fontSize: 13,
     fontWeight: "500",
-    color: "#999", // Màu xám nhạt cho tiêu đề nhóm
+    color: "#999",
     marginBottom: 8,
-    paddingLeft: 16, // Thụt vào một chút
+    paddingLeft: 16,
     textTransform: "uppercase",
   },
   groupList: {
-    backgroundColor: "#1C1C1E", // Màu nền cho các nhóm cài đặt (giống FriendScreen)
+    backgroundColor: "#1C1C1E",
     borderRadius: 12,
     overflow: "hidden",
   },
-  // Hàng Cài đặt
   item: {
     flexDirection: "row",
     alignItems: "center",
@@ -330,9 +368,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
-  // 🆕 Style mới để căn chỉnh icon
   iconStyle: {
-    width: 28, // Đảm bảo khoảng cách cố định
+    width: 28,
     textAlign: "center",
   },
   itemText: {
@@ -341,13 +378,9 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     flexShrink: 1,
   },
-  // ❌ Đã XÓA iconContainer, defaultIconBg, dangerIconBg
-
-  // Danger Zone Styles
   dangerText: {
-    color: "#FF3B30", // Màu đỏ cho text vùng nguy hiểm
+    color: "#FF3B30",
   },
-  // Footer
   footer: {
     marginTop: 20,
     alignItems: "center",
