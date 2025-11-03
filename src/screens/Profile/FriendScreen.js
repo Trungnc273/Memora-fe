@@ -116,7 +116,7 @@ export default function FriendScreen() {
             { icon: "chatbubble", label: "Tin nhắn", color: "#4EE44E" },
             { icon: "link", label: "Khác", color: "#aaa" },
           ].map((item, idx) => (
-            <View key={idx} style={styles.appItemBox}>
+            <TouchableOpacity key={idx} style={styles.appItemBox}>
               <View style={styles.iconCircle}>
                 {item.uri ? (
                   <Image source={{ uri: item.uri }} style={styles.appIcon} />
@@ -125,7 +125,7 @@ export default function FriendScreen() {
                 )}
               </View>
               <Text style={styles.appLabel}>{item.label}</Text>
-            </View>
+            </TouchableOpacity>
           ))}
         </View>
       </View>
@@ -143,17 +143,28 @@ export default function FriendScreen() {
           data={friends}
           keyExtractor={(item) => item._id}
           renderItem={({ item }) => (
-            <View style={styles.friendItem}>
+            <TouchableOpacity style={styles.friendItem}>
               <View style={styles.friendLeft}>
-                <View style={styles.avatar}>
-                  <FontAwesome5 name="user" size={20} color="#fff" />
-                </View>
-                <Text style={styles.friendName}>{item.display_name}</Text>
+                {item?.avatar_url ? (
+                  <Image
+                    source={{ uri: item.avatar_url }}
+                    style={styles.avatar}
+                  />
+                ) : (
+                  <View style={styles.avatar}>
+                    <FontAwesome5 name="user" size={20} color="#fff" />
+                  </View>
+                )}
+
+                <Text style={styles.friendName}>
+                  {item.display_name || "Người dùng"}
+                </Text>
               </View>
+
               <TouchableOpacity>
                 <Ionicons name="close" size={20} color="#aaa" />
               </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
           )}
           ListEmptyComponent={
             <Text style={styles.emptyText}>Bạn chưa có bạn nào</Text>

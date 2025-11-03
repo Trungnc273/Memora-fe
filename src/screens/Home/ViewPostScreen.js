@@ -143,7 +143,9 @@ export default function ViewPostScreen({
           <View style={styles.userInfo}>
             <Image
               source={{
-                uri: post.user?.avatar || "https://i.pravatar.cc/150?img=47",
+                uri:
+                  post.user_id?.avatar_url ||
+                  "https://i.pravatar.cc/150?img=47",
               }}
               style={styles.avatar}
             />

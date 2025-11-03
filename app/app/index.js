@@ -294,7 +294,6 @@ export default function Index() {
           <BottomSheetView style={styles.contentContainer}>
             <FriendScreen />
           </BottomSheetView>
-          <FriendScreen />
         </BottomSheet>
 
         {/* 2. 🆕 BottomSheet cho SettingScreen (ĐÃ SỬA LỖI CẤU TRÚC) */}

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -14,6 +15,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 export default function MessScreen({ onGoHome, onOpenChat }) {
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // 🧩 Hàm định dạng thời gian (vd: "3 ngày", "2 giờ", "vừa xong")
   const formatTimeAgo = (isoString) => {
@@ -29,9 +31,11 @@ export default function MessScreen({ onGoHome, onOpenChat }) {
   };
 
   // 🔥 Gọi API lấy danh sách hội thoại
-  const fetchConversations = async () => {
+  const fetchConversations = useCallback(async () => {
+    // Chỉ hiển thị loading ban đầu nếu KHÔNG phải đang refresh
+    if (!isRefreshing) setLoading(true);
+
     try {
-      setLoading(true);
       const token = await AsyncStorage.getItem("token");
       const res = await fetch("https://memora-be.onrender.com/conversation", {
         headers: { Authorization: `Bearer ${token}` },
@@ -45,13 +49,19 @@ export default function MessScreen({ onGoHome, onOpenChat }) {
     } catch (err) {
       console.log("❌ Lỗi tải hội thoại:", err);
     } finally {
-      setLoading(false);
+      if (!isRefreshing) setLoading(false);
+      setIsRefreshing(false);
     }
-  };
+  }, [isRefreshing]);
 
   useEffect(() => {
     fetchConversations();
-  }, []);
+  }, [fetchConversations]);
+
+  const onRefresh = useCallback(async () => {
+    setIsRefreshing(true); // Bật biểu tượng refresh
+    await fetchConversations();
+  }, [fetchConversations]);
 
   return (
     <View style={styles.container}>
@@ -65,7 +75,7 @@ export default function MessScreen({ onGoHome, onOpenChat }) {
       </View>
 
       {/* Loading */}
-      {loading ? (
+      {loading && !isRefreshing ? (
         <ActivityIndicator
           size="large"
           color="#fff"
@@ -75,8 +85,18 @@ export default function MessScreen({ onGoHome, onOpenChat }) {
         <FlatList
           data={conversations}
           keyExtractor={(item) => item._id}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={onRefresh}
+              tintColor="#FFCC00"
+            />
+          }
           renderItem={({ item }) => {
-            const avatar = "https://i.pravatar.cc/150?img=47"; // tạm avatar mặc định
+            const avatar = item.user?.avatar_url
+              ? item.user.avatar_url
+              : "https://i.pravatar.cc/150?img=47"; // avatar mặc định
+
             const name = item.user?.display_name || "Người dùng";
             const lastMsg = item.last_message?.content || " ";
             const time = formatTimeAgo(item.last_message?.created_at);

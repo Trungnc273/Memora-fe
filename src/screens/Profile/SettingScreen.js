@@ -1,24 +1,35 @@
 // File: SettingsScreen.js
 
-import React, { useState, memo } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Switch } from "react-native";
+import React, { useState, memo, useCallback, useEffect } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRouter } from "expo-router";
+import {
+  Alert,
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Switch,
+} from "react-native";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import {
   Ionicons,
   FontAwesome,
   MaterialCommunityIcons,
 } from "@expo/vector-icons";
-
+import EditAvatarScreen from "./EditAvatarScreen";
+import EditDisplayNameScreen from "./EditDisplayNameScreen";
+import LogoutScreen from "./LogoutScreen";
 // Config dữ liệu cho các nhóm và items (data-driven approach để dễ maintain và giảm hardcode)
 const SETTINGS_CONFIG = [
   {
     title: "Tổng quát",
     items: [
       {
-        iconName: "calendar-outline",
+        iconName: "key-outline",
         iconLibrary: "Ionicons",
-        text: "Sửa ngày sinh",
-        onPressKey: "Sửa ngày sinh",
+        text: "Đổi mật khẩu",
+        onPressKey: "Đổi mật khẩu",
       },
       {
         iconName: "text-outline",
@@ -239,16 +250,95 @@ const SettingsGroup = memo(({ title, children }) => (
 SettingsGroup.displayName = "SettingsGroup";
 
 export default function SettingsScreen() {
-  // State cho switches (dùng object để dễ mở rộng nếu có nhiều switch)
+  const router = useRouter();
   const [switches, setSwitches] = useState({
     readReceiptsEnabled: true,
   });
 
+  // === State mới để quản lý Modal ===
+  const [isEditAvatarModalVisible, setIsEditAvatarModalVisible] =
+    useState(false);
+  const [userToken, setUserToken] = useState(null);
+
+  const [isEditDisplayNameModalVisible, setIsEditDisplayNameModalVisible] =
+    useState(false);
+
+  const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
+  useEffect(() => {
+    const loadToken = async () => {
+      try {
+        const token = await AsyncStorage.getItem("token");
+        setUserToken(token);
+      } catch (error) {
+        console.error("Lỗi khi lấy token:", error);
+      }
+    };
+    loadToken();
+  }, []);
+
+  // Hàm mở Modal
+  const openEditAvatarModal = useCallback(() => {
+    setIsEditAvatarModalVisible(true);
+  }, []);
+
+  // Hàm đóng Modal
+  const closeEditAvatarModal = useCallback(() => {
+    setIsEditAvatarModalVisible(false);
+  }, []);
+
+  // 🔥 HÀM MỞ MODAL SỬA TÊN
+  const openEditDisplayNameModal = useCallback(() => {
+    setIsEditDisplayNameModalVisible(true);
+  }, []);
+
+  // 🔥 HÀM ĐÓNG MODAL SỬA TÊN
+  const closeEditDisplayNameModal = useCallback(() => {
+    setIsEditDisplayNameModalVisible(false);
+  }, []);
+
+  // 🔥 HÀM MỞ MODAL ĐĂNG XUẤT
+  const openLogoutModal = useCallback(() => {
+    setIsLogoutModalVisible(true);
+  }, []); // 🔥 HÀM ĐÓNG MODAL ĐĂNG XUẤT
+
+  const closeLogoutModal = useCallback(() => {
+    setIsLogoutModalVisible(false);
+  }, []); // 🔥 HÀM XỬ LÝ ĐĂNG XUẤT (đã tạo trước đó, nay thêm closeModal)
+  const handleLogout = useCallback(async () => {
+    try {
+      await AsyncStorage.removeItem("token");
+      await AsyncStorage.removeItem("user");
+      router.replace("/welcome");
+    } catch (error) {
+      console.error("❌ Lỗi khi đăng xuất:", error);
+      Alert.alert("Lỗi", "Không thể đăng xuất. Vui lòng thử lại.");
+    }
+  }, [router]);
+
   // Hàm xử lý onPress chung
-  const handlePress = (key) => {
-    console.log(`Pressed: ${key}`);
-    // navigation.navigate(key); // Uncomment khi cần
-  };
+  const handlePress = useCallback(
+    (key) => {
+      console.log(`Pressed: ${key}`);
+
+      if (key === "Edit profile photo") {
+        openEditAvatarModal(); // Mở Modal khi ấn vào item này
+        return;
+      }
+
+      if (key === "Sửa tên") {
+        openEditDisplayNameModal(); // Gọi hàm mở Modal Sửa Tên
+        return;
+      }
+
+      if (key === "Đăng xuất") {
+        // 👈 MỞ MODAL KHI ẤN ĐĂNG XUẤT
+        openLogoutModal();
+        return;
+      }
+      // navigation.navigate(key); // Uncomment khi cần
+    },
+    [openEditAvatarModal, openEditDisplayNameModal, openLogoutModal]
+  ); // Thêm dependency openEditAvatarModal
 
   // Hàm xử lý switch change
   const handleSwitchChange = (key, value) => {
@@ -290,27 +380,47 @@ export default function SettingsScreen() {
   );
 
   return (
-    <BottomSheetScrollView
-      style={styles.scrollView}
-      contentContainerStyle={styles.container}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Settings</Text>
-      </View>
+    <>
+      {/* 1. Màn hình Cài đặt chính */}
+      <BottomSheetScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Settings</Text>
+        </View>
 
-      {SETTINGS_CONFIG.map((group, index) => (
-        <SettingsGroup key={group.title || index} title={group.title}>
-          {renderItems(group.items, index)}
-        </SettingsGroup>
-      ))}
+        {SETTINGS_CONFIG.map((group, index) => (
+          <SettingsGroup key={group.title || index} title={group.title}>
+            {renderItems(group.items, index)}
+          </SettingsGroup>
+        ))}
 
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>
-          Dữ liệu thời tiết được cung cấp bởi  Weather
-        </Text>
-      </View>
-    </BottomSheetScrollView>
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>
+            Dữ liệu thời tiết được cung cấp bởi  Weather
+          </Text>
+        </View>
+      </BottomSheetScrollView>
+
+      {/* 2. Modal Pop-up Edit Avatar */}
+      <EditAvatarScreen
+        isVisible={isEditAvatarModalVisible}
+        onClose={closeEditAvatarModal}
+        userToken={userToken}
+      />
+      <EditDisplayNameScreen
+        isVisible={isEditDisplayNameModalVisible}
+        onClose={closeEditDisplayNameModal}
+      />
+
+      <LogoutScreen // 👈 THÊM COMPONENT NÀY
+        isVisible={isLogoutModalVisible}
+        onClose={closeLogoutModal}
+        onConfirmLogout={handleLogout}
+      />
+    </>
   );
 }
 

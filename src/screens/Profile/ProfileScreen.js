@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
@@ -90,7 +91,7 @@ export default function ProfileScreen({
   const [months, setMonths] = useState([]);
   const [firstPostDate, setFirstPostDate] = useState(null);
   const [user, setUser] = useState(null);
-  const router = useRouter();
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Memoized fetchPosts với useCallback để tránh re-fetch không cần
   const fetchPosts = useCallback(async () => {
@@ -126,6 +127,7 @@ export default function ProfileScreen({
       console.log("❌ Lỗi khi fetch posts:", error);
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   }, []);
 
@@ -166,21 +168,42 @@ export default function ProfileScreen({
   }, [fetchPosts, refreshFlag]);
 
   // Load user (không depend vào props khác)
-  useEffect(() => {
-    const loadUser = async () => {
-      const token = await AsyncStorage.getItem("token");
-      if (!token) return;
+  const loadUser = useCallback(async () => {
+    const token = await AsyncStorage.getItem("token");
+    if (!token) return;
 
-      try {
-        const decoded = jwtDecode(token);
-        setUser(decoded);
-      } catch (err) {
-        console.log("❌ Lỗi decode token:", err);
+    try {
+      const res = await fetch("https://memora-be.onrender.com/user", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data?.data) {
+        setUser(data.data);
+        await AsyncStorage.setItem("user", JSON.stringify(data.data));
+      } else {
+        console.warn(
+          "⚠️ Không thể fetch user data:",
+          data.message || "Lỗi API"
+        );
       }
-    };
-
-    loadUser();
+    } catch (err) {
+      console.log("❌ Lỗi khi fetch user API:", err);
+    }
   }, []);
+
+  useEffect(() => {
+    loadUser();
+  }, [loadUser]);
+
+  const onRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    await Promise.all([fetchPosts(), loadUser()]);
+  }, [fetchPosts, loadUser]);
 
   // Memoized computation cho dayImages (chỉ recompute khi posts hoặc months thay đổi)
   const computedDayImages = useMemo(() => {
@@ -249,13 +272,18 @@ export default function ProfileScreen({
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.userInfo}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {user?.display_name
-                ? user.display_name.charAt(0).toUpperCase()
-                : "?"}
-            </Text>
-          </View>
+          {user?.avatar_url ? (
+            <Image source={{ uri: user.avatar_url }} style={styles.avatar} />
+          ) : (
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>
+                {user?.display_name
+                  ? user.display_name.charAt(0).toUpperCase()
+                  : "?"}
+              </Text>
+            </View>
+          )}
+
           <Text style={styles.username}>
             {user?.display_name || "Người dùng"}
           </Text>
@@ -283,6 +311,13 @@ export default function ProfileScreen({
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 80 }}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={onRefresh}
+            tintColor="#FFCC00"
+          />
+        }
       >
         {infoText}
 

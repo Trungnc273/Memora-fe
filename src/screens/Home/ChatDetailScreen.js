@@ -67,12 +67,10 @@ const ChatDetailScreen = ({ navigation, chat }) => {
     socket.emit("join_room", chat._id);
     console.log("📡 Joined room:", chat._id);
 
-    // 👉 Lắng nghe tin nhắn realtime
     socket.on("new_message", (data) => {
       if (data.conversationId === chat._id) {
         const msg = data.message;
 
-        // ✅ Sửa tại đây
         if (
           msg.sender?._id === currentUser?._id ||
           msg.sender === currentUser?._id
@@ -96,14 +94,6 @@ const ChatDetailScreen = ({ navigation, chat }) => {
       socket.off("new_message");
     };
   }, [chat]);
-
-  // 🧠 Tự động cuộn xuống khi có tin mới
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    }, 100);
-    return () => clearTimeout(timeout);
-  }, [messages]);
 
   // 🧠 Cuộn xuống khi bàn phím mở
   useEffect(() => {
@@ -173,7 +163,11 @@ const ChatDetailScreen = ({ navigation, chat }) => {
       >
         {!isMine && (
           <Image
-            source={{ uri: "https://i.pravatar.cc/150?u=" + chat.user._id }}
+            source={{
+              uri: chat?.user?.avatar_url // Kiểm tra chat? và user?
+                ? chat.user.avatar_url
+                : "https://i.pravatar.cc/150?u=" + chat?.user?._id, // Kiểm tra chat? và user?
+            }}
             style={styles.msgAvatar}
           />
         )}
@@ -202,7 +196,9 @@ const ChatDetailScreen = ({ navigation, chat }) => {
             <View style={styles.headerCenter}>
               <Image
                 source={{
-                  uri: "https://i.pravatar.cc/150?u=" + chat?.user?._id,
+                  uri: chat?.user?.avatar_url // Kiểm tra chat? và user?
+                    ? chat.user.avatar_url
+                    : "https://i.pravatar.cc/150?u=" + chat?.user?._id, // Kiểm tra chat? và user?
                 }}
                 style={styles.avatar}
               />
