@@ -181,47 +181,43 @@ const ChatDetailScreen = ({ navigation, chat }) => {
       (sender._id === currentUser?._id ||
         sender?.display_name === currentUser?.display_name);
 
-    // Lấy avatar: nếu sender tồn tại và có avatar -> dùng; nếu sender là currentUser -> dùng userInfo/avatar currentUser; else fallback DEFAULT_AVATAR(senderId)
+    // Avatar logic: nếu sender có avatar dùng nó, nếu là mình dùng currentUser, còn không fallback bằng DEFAULT_AVATAR
     const senderId = sender?._id || null;
     const senderAvatarFromSender = sender?.avatar_url || null;
 
     let avatarForMessage;
     if (isMine) {
-      // ưu tiên avatar từ currentUser (đã lưu trong AsyncStorage)
       avatarForMessage =
         currentUser?.avatar_url ||
         userInfo?.avatar_url ||
         DEFAULT_AVATAR(currentUser?._id);
     } else {
-      // người khác: nếu sender cung cấp avatar thì dùng, nếu không thì fallback theo senderId hoặc default
       avatarForMessage = senderAvatarFromSender || DEFAULT_AVATAR(senderId);
     }
 
-    // Lấy post nếu có
     const postUrl = item?.post?.url;
     const postCaption = item?.post?.caption;
 
+    // Khi isMine = true thì đặt row theo row-reverse (avatar ở phải, bubble trước => hiện bên phải)
+    const containerDirection = isMine ? "row-reverse" : "row";
+    const avatarVisible = !isMine; // chỉ hiện avatar của người khác ở bên trái
+
     return (
       <View
-        style={[
-          styles.messageContainer,
-          isMine ? styles.myMessageContainer : styles.theirMessageContainer,
-        ]}
+        style={[styles.messageContainer, { flexDirection: containerDirection }]}
       >
-        {/* Hiện avatar của người khác (không hiện avatar của mình ở bên trái) */}
-        {!isMine && (
+        {avatarVisible && (
           <Image source={{ uri: avatarForMessage }} style={styles.msgAvatar} />
         )}
 
-        {/* Toàn bộ tin nhắn (text + ảnh) nằm trong 1 bubble */}
         <View
           style={[
             styles.bubble,
             isMine ? styles.myBubble : styles.theirBubble,
-            { paddingBottom: postUrl ? 0 : 8 }, // giảm padding khi có ảnh
+            // nhỏ tweak: nếu có ảnh, giảm padding dưới
+            { paddingBottom: postUrl ? 0 : 8 },
           ]}
         >
-          {/* Ảnh (nếu có post) */}
           {postUrl ? (
             <View style={styles.imageWrapper}>
               <Image
@@ -243,7 +239,6 @@ const ChatDetailScreen = ({ navigation, chat }) => {
             </View>
           ) : null}
 
-          {/* Nội dung text */}
           {item?.content ? (
             <Text style={styles.text}>{item.content}</Text>
           ) : null}
@@ -383,12 +378,13 @@ const styles = StyleSheet.create({
   headerName: { color: "#fff", fontSize: 17, fontWeight: "600" },
   avatar: { width: 35, height: 35, borderRadius: 20 },
   messageContainer: {
-    flexDirection: "row",
     marginVertical: 6,
     alignItems: "flex-end",
+    width: "100%",
+    paddingHorizontal: 6,
   },
   theirMessageContainer: { justifyContent: "flex-start" },
-  myMessageContainer: { justifyContent: "flex-end", alignSelf: "flex-end" },
+  myMessageContainer: { justifyContent: "flex-end" },
   msgAvatar: { width: 30, height: 30, borderRadius: 15, marginRight: 8 },
   bubble: {
     maxWidth: "75%",
