@@ -311,10 +311,34 @@ export default function Index() {
         </BottomSheet>
 
         {isKeyboardOpen && !isPreviewOpen && currentIndex.value !== 3 && (
-          <Pressable
-            style={styles.keyboardBlocker}
-            onPress={() => Keyboard.dismiss()}
-          />
+          // container không chặn touch của con
+          <View
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 320,
+            }}
+            pointerEvents="box-none"
+          >
+            {/* Pressable chỉ chiếm phần trên màn hình (không chặn reply area ở đáy) */}
+            <Pressable
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 320,
+                backgroundColor: "transparent",
+              }}
+              onPress={() => {
+                console.log("⛔ keyboardBlocker pressed -> dismiss");
+                Keyboard.dismiss();
+              }}
+              pointerEvents="auto"
+            />
+          </View>
         )}
       </View>
     </GestureHandlerRootView>
@@ -329,7 +353,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    bottom: 0,
+    bottom: "50%",
     backgroundColor: "transparent",
     zIndex: 9999,
   },

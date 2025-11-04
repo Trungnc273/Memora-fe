@@ -8,10 +8,11 @@ import {
   TouchableOpacity,
   TextInput,
   Keyboard,
-  TouchableWithoutFeedback,
   Animated,
   Easing,
   Platform,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { jwtDecode } from "jwt-decode";
@@ -28,7 +29,9 @@ export default function ViewPostScreen({
   const [message, setMessage] = useState("");
   const [isOwner, setIsOwner] = useState(false);
   const inputRef = useRef(null);
+  const pressedSendRef = useRef(false);
   const animValue = useRef(new Animated.Value(0)).current;
+  const [sending, setSending] = useState(false);
 
   // 🕒 Format thời gian
   const formatPostTime = (createdAt) => {
@@ -55,7 +58,7 @@ export default function ViewPostScreen({
         if (!token || !post?.user_id?._id) return;
 
         const decoded = jwtDecode(token);
-        const userId = decoded?.id;
+        const userId = decoded?.id || decoded?.sub || decoded?.userId; // an toàn hơn
         if (userId === post.user_id._id) setIsOwner(true);
         else setIsOwner(false);
       } catch (err) {
@@ -126,143 +129,232 @@ export default function ViewPostScreen({
 
   if (!post) return null;
 
+  // ----- NEW: send message to receiver with post_id -----
+  const sendMessageWithPost = async () => {
+    if (sending) return;
+    // Allow sending only when either message present OR you want to allow empty message:
+    if (!message.trim()) {
+      Alert.alert("Lỗi", "Vui lòng nhập nội dung trước khi gửi.");
+      return;
+    }
+
+    const receiverId = post?.user_id?._id;
+    if (!receiverId) {
+      Alert.alert("Lỗi", "Không xác định được người nhận.");
+      return;
+    }
+
+    const body = {
+      content: message.trim(),
+      post_id: post?._id,
+    };
+
+    setSending(true);
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) {
+        Alert.alert("Lỗi", "Bạn chưa đăng nhập.");
+        setSending(false);
+        return;
+      }
+
+      console.log("📤 Gửi message to", receiverId, "body=", body);
+
+      const res = await fetch(
+        `https://memora-be.onrender.com/message/receiver/${receiverId}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(body),
+        }
+      );
+
+      const json = await res.json();
+      console.log("📥 Response:", res.status, json);
+
+      if (!res.ok) {
+        Alert.alert("Gửi thất bại", json?.message || "Lỗi khi gửi tin nhắn.");
+        return;
+      }
+
+      // Success
+      setMessage("");
+      // chỉ dismiss keyboard khi gửi thành công
+      Keyboard.dismiss();
+      onKeyboardToggle(false);
+      Alert.alert("Đã gửi", "Tin nhắn đã được gửi kèm bài viết.");
+    } catch (err) {
+      console.log("❌ Lỗi gửi tin nhắn:", err);
+      Alert.alert("Lỗi", "Không thể gửi tin nhắn. Vui lòng thử lại.");
+    } finally {
+      setSending(false);
+      pressedSendRef.current = false; // đảm bảo reset nếu còn sót
+    }
+  };
+  // ------------------------------------------------------
+
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <View style={styles.container}>
-        {/* 🖼 Nếu là bài của mình → chỉ hiển thị dòng thông báo */}
-        <>
-          {/* Ảnh chính */}
-          <View style={styles.imageContainer}>
-            <Image source={{ uri: post.media?.url }} style={styles.image} />
-            {post?.caption && (
-              <Text style={styles.caption}>{post.caption}</Text>
-            )}
-          </View>
+    <View style={styles.container}>
+      {/* 🖼 Nếu là bài của mình → chỉ hiển thị dòng thông báo */}
+      <>
+        {/* Ảnh chính */}
+        <View style={styles.imageContainer}>
+          <Image source={{ uri: post.media?.url }} style={styles.image} />
+          {post?.caption && <Text style={styles.caption}>{post.caption}</Text>}
+        </View>
 
-          {/* Info */}
-          <View style={styles.userInfo}>
-            <Image
-              source={{
-                uri:
-                  post.user_id?.avatar_url ||
-                  "https://i.pravatar.cc/150?img=47",
-              }}
-              style={styles.avatar}
+        {/* Info */}
+        <View style={styles.userInfo}>
+          <Image
+            source={{
+              uri:
+                post.user_id?.avatar_url || "https://i.pravatar.cc/150?img=47",
+            }}
+            style={styles.avatar}
+          />
+          <Text style={styles.name}>
+            {post.user_id?.display_name || "Người dùng"}
+          </Text>
+          <Text style={styles.time}>{postTime}</Text>
+        </View>
+      </>
+
+      {/* Chat bar */}
+      <Animated.View
+        style={[
+          styles.messageBarContainer,
+          {
+            opacity: chatBarOpacity,
+            transform: [{ translateY: chatBarTranslateY }],
+          },
+        ]}
+      >
+        <View style={styles.messageBar}>
+          {isOwner ? (
+            <Text style={styles.noActivityText}>Chưa có hoạt động nào!</Text>
+          ) : (
+            <>
+              <TouchableOpacity
+                style={{ flex: 1 }}
+                activeOpacity={0.8}
+                onPress={() => {
+                  setIsFocused(true);
+                  setTimeout(() => inputRef.current?.focus(), 80);
+                }}
+              >
+                <Text style={styles.placeholderText}>Gửi tin nhắn...</Text>
+              </TouchableOpacity>
+              <View style={styles.emojis}>
+                <Text style={styles.emoji}>💛</Text>
+                <Text style={styles.emoji}>🔥</Text>
+                <Text style={styles.emoji}>😍</Text>
+                <Ionicons name="happy-outline" size={22} color="#fff" />
+              </View>
+            </>
+          )}
+        </View>
+      </Animated.View>
+
+      {/* Bottom row */}
+      {!isFocused && (
+        <View style={styles.bottomRow}>
+          <TouchableOpacity>
+            <MaterialCommunityIcons
+              name="view-grid-outline"
+              size={32}
+              color="#bdbdbd"
             />
-            <Text style={styles.name}>
-              {post.user_id?.display_name || "Người dùng"}
-            </Text>
-            <Text style={styles.time}>{postTime}</Text>
-          </View>
-        </>
+          </TouchableOpacity>
 
-        {/* Chat bar */}
-        {/* Chat bar (hiển thị khung cho cả chủ bài viết và người khác) */}
+          <TouchableOpacity style={styles.cameraButton} onPress={scrollToHome}>
+            <View style={styles.outerCircle}>
+              <View style={styles.innerCircle} />
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity>
+            <Ionicons
+              name="arrow-up-circle-outline"
+              size={36}
+              color="#bdbdbd"
+            />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Reply bar */}
+      {!isOwner && (
         <Animated.View
           style={[
-            styles.messageBarContainer,
+            styles.replyContainer,
             {
-              opacity: chatBarOpacity,
-              transform: [{ translateY: chatBarTranslateY }],
+              transform: [{ translateY: replyTranslateY }],
+              opacity: replyOpacity,
             },
           ]}
         >
-          <View style={styles.messageBar}>
-            {isOwner ? (
-              <Text style={styles.noActivityText}>Chưa có hoạt động nào!</Text>
-            ) : (
-              <>
-                <TouchableOpacity
-                  style={{ flex: 1 }}
-                  activeOpacity={0.8}
-                  onPress={() => {
-                    setIsFocused(true);
-                    setTimeout(() => inputRef.current?.focus(), 80);
-                  }}
-                >
-                  <Text style={styles.placeholderText}>Gửi tin nhắn...</Text>
-                </TouchableOpacity>
-                <View style={styles.emojis}>
-                  <Text style={styles.emoji}>💛</Text>
-                  <Text style={styles.emoji}>🔥</Text>
-                  <Text style={styles.emoji}>😍</Text>
-                  <Ionicons name="happy-outline" size={22} color="#fff" />
-                </View>
-              </>
-            )}
-          </View>
-        </Animated.View>
-
-        {/* Bottom row */}
-        {!isFocused && (
-          <View style={styles.bottomRow}>
-            <TouchableOpacity>
-              <MaterialCommunityIcons
-                name="view-grid-outline"
-                size={32}
-                color="#bdbdbd"
-              />
-            </TouchableOpacity>
+          <View style={styles.replyBar}>
+            <TextInput
+              ref={inputRef}
+              value={message}
+              onChangeText={setMessage}
+              placeholder={`Trả lời ${
+                post.user_id?.display_name || "người dùng"
+              }...`}
+              placeholderTextColor="#bdbdbd"
+              style={styles.replyInput}
+              onFocus={() => {
+                onKeyboardToggle(true);
+              }}
+              onBlur={() => {
+                // không hide nếu đang gửi hoặc vừa ấn nút gửi
+                if (!sending && !pressedSendRef.current) {
+                  onKeyboardToggle(false);
+                  setIsFocused(false);
+                }
+              }}
+              returnKeyType="send"
+              onSubmitEditing={async () => {
+                // đảm bảo await (khi nhấn nút Send trên keyboard)
+                pressedSendRef.current = true;
+                await sendMessageWithPost();
+                // reset pressed flag (sendMessageWithPost cũng reset trong finally, nhưng giữ safety)
+                pressedSendRef.current = false;
+              }}
+              editable={!sending}
+            />
 
             <TouchableOpacity
-              style={styles.cameraButton}
-              onPress={scrollToHome}
+              onPressIn={() => {
+                // Đánh dấu rằng người dùng vừa bấm nút — tránh onBlur đóng UI
+                pressedSendRef.current = true;
+              }}
+              onPress={async () => {
+                // await để tránh race với onBlur
+                await sendMessageWithPost();
+                // sẽ reset pressedSendRef trong finally của sendMessageWithPost, nhưng reset lần nữa an toàn
+                pressedSendRef.current = false;
+              }}
+              disabled={!message.trim() || sending}
+              style={{ paddingLeft: 10 }}
             >
-              <View style={styles.outerCircle}>
-                <View style={styles.innerCircle} />
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity>
-              <Ionicons
-                name="arrow-up-circle-outline"
-                size={36}
-                color="#bdbdbd"
-              />
+              {sending ? (
+                <ActivityIndicator size="small" color="#ffcc00" />
+              ) : (
+                <Ionicons
+                  name="arrow-up-circle"
+                  size={28}
+                  color={message ? "#ffcc00" : "#bdbdbd"}
+                />
+              )}
             </TouchableOpacity>
           </View>
-        )}
-
-        {/* Reply bar */}
-        {!isOwner && (
-          <Animated.View
-            style={[
-              styles.replyContainer,
-              {
-                transform: [{ translateY: replyTranslateY }],
-                opacity: replyOpacity,
-              },
-            ]}
-          >
-            <View style={styles.replyBar}>
-              <TextInput
-                ref={inputRef}
-                value={message}
-                onChangeText={setMessage}
-                placeholder={`Trả lời ${
-                  post.user_id?.display_name || "người dùng"
-                }...`}
-                placeholderTextColor="#bdbdbd"
-                style={styles.replyInput}
-                onFocus={() => onKeyboardToggle(true)}
-                onBlur={() => onKeyboardToggle(false)}
-                onSubmitEditing={() => {
-                  if (!message.trim()) return;
-                  console.log("💬 gửi:", message);
-                  setMessage("");
-                  Keyboard.dismiss();
-                }}
-              />
-              <Ionicons
-                name="arrow-up-circle"
-                size={28}
-                color={message ? "#ffcc00" : "#bdbdbd"}
-              />
-            </View>
-          </Animated.View>
-        )}
-      </View>
-    </TouchableWithoutFeedback>
+        </Animated.View>
+      )}
+    </View>
   );
 }
 

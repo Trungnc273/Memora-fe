@@ -14,6 +14,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function MessScreen({ onGoHome, onOpenChat }) {
   const [conversations, setConversations] = useState([]);
+  const [userInfo, setUserInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -30,9 +31,26 @@ export default function MessScreen({ onGoHome, onOpenChat }) {
     return `${days} ngày`;
   };
 
-  // 🔥 Gọi API lấy danh sách hội thoại
+  const fetchUser = useCallback(async () => {
+    try {
+      const token = await AsyncStorage.getItem("token");
+      const res = await fetch("https://memora-be.onrender.com/user", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      const data = await res.json();
+      if (res.ok && data?.data) {
+        setUserInfo(data.data);
+        await AsyncStorage.setItem("user", JSON.stringify(data.data));
+      }
+    } catch (err) {
+      console.log("❌ Lỗi lấy user info:", err);
+    }
+  }, []);
+
   const fetchConversations = useCallback(async () => {
-    // Chỉ hiển thị loading ban đầu nếu KHÔNG phải đang refresh
     if (!isRefreshing) setLoading(true);
 
     try {
@@ -43,8 +61,6 @@ export default function MessScreen({ onGoHome, onOpenChat }) {
       const json = await res.json();
       if (json.status === "OK") {
         setConversations(json.data || []);
-      } else {
-        console.log("⚠️ API trả về lỗi:", json);
       }
     } catch (err) {
       console.log("❌ Lỗi tải hội thoại:", err);
@@ -55,11 +71,12 @@ export default function MessScreen({ onGoHome, onOpenChat }) {
   }, [isRefreshing]);
 
   useEffect(() => {
+    fetchUser();
     fetchConversations();
   }, [fetchConversations]);
 
   const onRefresh = useCallback(async () => {
-    setIsRefreshing(true); // Bật biểu tượng refresh
+    setIsRefreshing(true);
     await fetchConversations();
   }, [fetchConversations]);
 
@@ -71,7 +88,7 @@ export default function MessScreen({ onGoHome, onOpenChat }) {
           <Ionicons name="chevron-back" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Tin nhắn</Text>
-        <View style={{ width: 24 }} /> {/* để cân khoảng trống bên phải */}
+        <View style={{ width: 24 }} />
       </View>
 
       {/* Loading */}
@@ -93,12 +110,14 @@ export default function MessScreen({ onGoHome, onOpenChat }) {
             />
           }
           renderItem={({ item }) => {
-            const avatar = item.user?.avatar_url
-              ? item.user.avatar_url
-              : "https://i.pravatar.cc/150?img=47"; // avatar mặc định
+            const displayUser = item.user || userInfo;
 
-            const name = item.user?.display_name || "Người dùng";
-            const lastMsg = item.last_message?.content || " ";
+            const avatar = displayUser?.avatar_url
+              ? displayUser.avatar_url
+              : "https://i.pravatar.cc/150?img=47";
+
+            const name = displayUser?.display_name || "Bạn";
+            const lastMsg = item.last_message?.content || "";
             const time = formatTimeAgo(item.last_message?.created_at);
 
             return (

@@ -20,6 +20,7 @@ import {
 import EditAvatarScreen from "./EditAvatarScreen";
 import EditDisplayNameScreen from "./EditDisplayNameScreen";
 import LogoutScreen from "./LogoutScreen";
+import ChangePasswordScreen from "./ChangePasswordScreen";
 // Config dữ liệu cho các nhóm và items (data-driven approach để dễ maintain và giảm hardcode)
 const SETTINGS_CONFIG = [
   {
@@ -264,6 +265,10 @@ export default function SettingsScreen() {
     useState(false);
 
   const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
+
+  const [isChangePasswordModalVisible, setIsChangePasswordModalVisible] =
+    useState(false);
+
   useEffect(() => {
     const loadToken = async () => {
       try {
@@ -315,6 +320,15 @@ export default function SettingsScreen() {
     }
   }, [router]);
 
+  // 👈 HÀM MỞ MODAL ĐỔI MẬT KHẨU
+  const openChangePasswordModal = useCallback(() => {
+    setIsChangePasswordModalVisible(true);
+  }, []); // 👈 HÀM ĐÓNG MODAL ĐỔI MẬT KHẨU
+
+  const closeChangePasswordModal = useCallback(() => {
+    setIsChangePasswordModalVisible(false);
+  }, []);
+
   // Hàm xử lý onPress chung
   const handlePress = useCallback(
     (key) => {
@@ -335,9 +349,19 @@ export default function SettingsScreen() {
         openLogoutModal();
         return;
       }
+
+      if (key === "Đổi mật khẩu") {
+        openChangePasswordModal();
+        return;
+      }
       // navigation.navigate(key); // Uncomment khi cần
     },
-    [openEditAvatarModal, openEditDisplayNameModal, openLogoutModal]
+    [
+      openEditAvatarModal,
+      openEditDisplayNameModal,
+      openLogoutModal,
+      openChangePasswordModal,
+    ]
   ); // Thêm dependency openEditAvatarModal
 
   // Hàm xử lý switch change
@@ -414,8 +438,12 @@ export default function SettingsScreen() {
         isVisible={isEditDisplayNameModalVisible}
         onClose={closeEditDisplayNameModal}
       />
-
-      <LogoutScreen // 👈 THÊM COMPONENT NÀY
+      <ChangePasswordScreen
+        isVisible={isChangePasswordModalVisible}
+        onClose={closeChangePasswordModal}
+        userToken={userToken} // Truyền token để gọi API
+      />
+      <LogoutScreen
         isVisible={isLogoutModalVisible}
         onClose={closeLogoutModal}
         onConfirmLogout={handleLogout}

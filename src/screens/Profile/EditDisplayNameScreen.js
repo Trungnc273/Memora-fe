@@ -322,6 +322,6 @@ const styles = StyleSheet.create({
     backgroundColor: BACKGROUND_COLOR,
     borderRadius: 15,
     // 🔥 Điều chỉnh marginBottom để tạo khoảng cách với đáy màn hình/bàn phím
-    marginBottom: Platform.OS === "ios" ? 40 : 20,
+    marginBottom: 20,
   },
 });

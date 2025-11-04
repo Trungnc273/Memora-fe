@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -18,17 +18,39 @@ import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import socket from "../../socket/socket";
 
+const DEFAULT_AVATAR = (id) =>
+  `https://i.pravatar.cc/150?u=${id || "default_id"}`;
+const DEFAULT_USER_NAME = "Thông tin người dùng";
 const ChatDetailScreen = ({ navigation, chat }) => {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [input, setInput] = useState("");
   const flatListRef = useRef(null);
+  const [userInfo, setUserInfo] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   useEffect(() => {
     AsyncStorage.getItem("user").then((u) => {
       if (u) setCurrentUser(JSON.parse(u));
     });
+  }, []);
+  const fetchUser = useCallback(async () => {
+    try {
+      const token = await AsyncStorage.getItem("token");
+      const res = await fetch("https://memora-be.onrender.com/user", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      const data = await res.json();
+      if (res.ok && data?.data) {
+        setUserInfo(data.data);
+        await AsyncStorage.setItem("user", JSON.stringify(data.data));
+      }
+    } catch (err) {
+      console.log("❌ Lỗi lấy user info:", err);
+    }
   }, []);
 
   // 🧠 Lấy danh sách tin nhắn từ API
@@ -62,6 +84,7 @@ const ChatDetailScreen = ({ navigation, chat }) => {
 
     // 👉 Gọi API lấy tin nhắn
     fetchMessages();
+    fetchUser();
 
     // 👉 Tham gia room
     socket.emit("join_room", chat._id);
@@ -150,9 +173,33 @@ const ChatDetailScreen = ({ navigation, chat }) => {
   };
 
   const renderMessage = ({ item }) => {
+    const sender = item?.sender || null;
+
+    // Xác định xem tin nhắn có phải của mình
     const isMine =
-      item.sender.display_name !== chat.user.display_name &&
-      item.sender._id !== chat.user._id;
+      !!sender &&
+      (sender._id === currentUser?._id ||
+        sender?.display_name === currentUser?.display_name);
+
+    // Lấy avatar: nếu sender tồn tại và có avatar -> dùng; nếu sender là currentUser -> dùng userInfo/avatar currentUser; else fallback DEFAULT_AVATAR(senderId)
+    const senderId = sender?._id || null;
+    const senderAvatarFromSender = sender?.avatar_url || null;
+
+    let avatarForMessage;
+    if (isMine) {
+      // ưu tiên avatar từ currentUser (đã lưu trong AsyncStorage)
+      avatarForMessage =
+        currentUser?.avatar_url ||
+        userInfo?.avatar_url ||
+        DEFAULT_AVATAR(currentUser?._id);
+    } else {
+      // người khác: nếu sender cung cấp avatar thì dùng, nếu không thì fallback theo senderId hoặc default
+      avatarForMessage = senderAvatarFromSender || DEFAULT_AVATAR(senderId);
+    }
+
+    // Lấy post nếu có
+    const postUrl = item?.post?.url;
+    const postCaption = item?.post?.caption;
 
     return (
       <View
@@ -161,24 +208,78 @@ const ChatDetailScreen = ({ navigation, chat }) => {
           isMine ? styles.myMessageContainer : styles.theirMessageContainer,
         ]}
       >
+        {/* Hiện avatar của người khác (không hiện avatar của mình ở bên trái) */}
         {!isMine && (
-          <Image
-            source={{
-              uri: chat?.user?.avatar_url // Kiểm tra chat? và user?
-                ? chat.user.avatar_url
-                : "https://i.pravatar.cc/150?u=" + chat?.user?._id, // Kiểm tra chat? và user?
-            }}
-            style={styles.msgAvatar}
-          />
+          <Image source={{ uri: avatarForMessage }} style={styles.msgAvatar} />
         )}
+
+        {/* Toàn bộ tin nhắn (text + ảnh) nằm trong 1 bubble */}
         <View
-          style={[styles.bubble, isMine ? styles.myBubble : styles.theirBubble]}
+          style={[
+            styles.bubble,
+            isMine ? styles.myBubble : styles.theirBubble,
+            { paddingBottom: postUrl ? 0 : 8 }, // giảm padding khi có ảnh
+          ]}
         >
-          {item.content && <Text style={styles.text}>{item.content}</Text>}
+          {/* Ảnh (nếu có post) */}
+          {postUrl ? (
+            <View style={styles.imageWrapper}>
+              <Image
+                source={{ uri: postUrl }}
+                style={styles.messageImage}
+                resizeMode="cover"
+              />
+              {postCaption ? (
+                <View style={styles.imageCaptionContainer}>
+                  <Text
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                    style={styles.imageCaptionText}
+                  >
+                    {postCaption}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
+          {/* Nội dung text */}
+          {item?.content ? (
+            <Text style={styles.text}>{item.content}</Text>
+          ) : null}
         </View>
       </View>
     );
   };
+
+  let headerAvatarUrl;
+  let headerDisplayName;
+
+  if (!chat?.user) {
+    // Nếu chat.user không có (chat 1-on-1 chưa nạp đầy) -> hiển thị thông tin current user (an toàn)
+    headerAvatarUrl = userInfo?.avatar_url || DEFAULT_AVATAR(currentUser?._id);
+    headerDisplayName = userInfo?.display_name || DEFAULT_USER_NAME;
+  } else {
+    // Nếu chat.user tồn tại:
+    // - Nếu chat.user là chính bạn (lý thuyết ít xảy ra) -> dùng currentUser
+    const isChatUserCurrent =
+      currentUser && chat.user._id && chat.user._id === currentUser._id;
+
+    if (isChatUserCurrent) {
+      headerAvatarUrl =
+        currentUser?.avatar_url ||
+        userInfo?.avatar_url ||
+        DEFAULT_AVATAR(currentUser?._id);
+      headerDisplayName =
+        currentUser?.display_name ||
+        userInfo?.display_name ||
+        DEFAULT_USER_NAME;
+    } else {
+      // Người khác: nếu avatar/tên có thì dùng, nếu không thì dùng default (không dùng userInfo)
+      headerAvatarUrl = chat.user?.avatar_url || DEFAULT_AVATAR(chat.user?._id);
+      headerDisplayName = chat.user?.display_name || DEFAULT_USER_NAME;
+    }
+  }
 
   return (
     <LinearGradient colors={["#214E14", "#2E5E1C"]} style={styles.container}>
@@ -196,13 +297,11 @@ const ChatDetailScreen = ({ navigation, chat }) => {
             <View style={styles.headerCenter}>
               <Image
                 source={{
-                  uri: chat?.user?.avatar_url // Kiểm tra chat? và user?
-                    ? chat.user.avatar_url
-                    : "https://i.pravatar.cc/150?u=" + chat?.user?._id, // Kiểm tra chat? và user?
+                  uri: headerAvatarUrl, // Sửa: Dùng biến đã tính toán
                 }}
                 style={styles.avatar}
               />
-              <Text style={styles.headerName}>{chat?.user?.display_name}</Text>
+              <Text style={styles.headerName}>{headerDisplayName}</Text>
             </View>
             <Entypo name="dots-three-horizontal" size={18} color="#fff" />
           </View>
@@ -257,7 +356,7 @@ const ChatDetailScreen = ({ navigation, chat }) => {
                   <Ionicons
                     name="send"
                     size={22}
-                    color={input.trim() ? "#FFD700" : "#aaa"} // ✅ Có text thì vàng, không thì xám
+                    color={input.trim() ? "#FFD700" : "#aaa"}
                   />
                 )}
               </TouchableOpacity>
@@ -302,7 +401,14 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.3)",
     alignSelf: "flex-end",
   },
-  text: { color: "#fff", fontSize: 16, marginTop: 4 },
+  text: {
+    color: "#fff",
+    fontSize: 16,
+    marginTop: 3,
+    marginBottom: 3,
+    marginLeft: "auto",
+    marginRight: "auto",
+  },
   inputContainer: { width: "100%", paddingHorizontal: 12, paddingBottom: 30 },
   inputBox: {
     flexDirection: "row",
@@ -313,4 +419,36 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   input: { flex: 1, color: "#fff", fontSize: 15, paddingVertical: 6 },
+  messageImage: {
+    width: 200,
+    height: 140,
+    borderRadius: 12,
+  },
+
+  imageWrapper: {
+    marginTop: 8,
+    marginBottom: 6,
+    overflow: "hidden",
+    borderRadius: 12,
+    position: "relative",
+  },
+
+  imageCaptionContainer: {
+    position: "absolute",
+    bottom: 8,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    paddingHorizontal: 12,
+  },
+
+  imageCaptionText: {
+    backgroundColor: "rgba(200,200,200,0.9)", // nền xám mờ
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    color: "#000",
+    fontSize: 13,
+    textAlign: "center",
+  },
 });
