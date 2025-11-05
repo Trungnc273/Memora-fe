@@ -47,8 +47,12 @@ export default function Index() {
 
   const snapPoints = useMemo(() => ["93%"], []);
   const initialSnapIndex = -1;
+
+  const [friendRefreshKey, setFriendRefreshKey] = useState(0);
+
   // 🆕 Hàm mở màn hình bạn bè
   const openFriendScreen = () => {
+    setFriendRefreshKey((k) => k + 1);
     bottomSheetRef.current?.snapToIndex(0);
   };
 
@@ -292,7 +296,7 @@ export default function Index() {
         >
           {/* BottomSheetView tối ưu hóa cho nội dung cuộn bên trong */}
           <BottomSheetView style={styles.contentContainer}>
-            <FriendScreen />
+            <FriendScreen refreshFlag={friendRefreshKey} />
           </BottomSheetView>
         </BottomSheet>
 

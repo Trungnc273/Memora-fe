@@ -417,7 +417,7 @@ const styles = StyleSheet.create({
   input: { flex: 1, color: "#fff", fontSize: 15, paddingVertical: 6 },
   messageImage: {
     width: 200,
-    height: 140,
+    height: 210,
     borderRadius: 12,
   },
 

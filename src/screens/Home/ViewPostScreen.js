@@ -185,7 +185,7 @@ export default function ViewPostScreen({
       // chỉ dismiss keyboard khi gửi thành công
       Keyboard.dismiss();
       onKeyboardToggle(false);
-      Alert.alert("Đã gửi", "Tin nhắn đã được gửi kèm bài viết.");
+      Alert.alert("Đã gửi", "Tin nhắn đã được gửi.");
     } catch (err) {
       console.log("❌ Lỗi gửi tin nhắn:", err);
       Alert.alert("Lỗi", "Không thể gửi tin nhắn. Vui lòng thử lại.");
