@@ -6,13 +6,13 @@ import {
   Dimensions,
   Image,
   Platform,
-  SafeAreaView,
   StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import Webcam from "react-webcam";
 
 const { height, width } = Dimensions.get("window");
@@ -28,15 +28,19 @@ export default function HomeScreen({ refreshProfile, onOpenPreview }) {
   if (!permission) return <View />;
   if (!permission.granted) {
     return (
-      <View style={styles.permissionContainer}>
-        <Text style={styles.permissionText}>Cần cấp quyền truy cập camera</Text>
-        <TouchableOpacity
-          onPress={requestPermission}
-          style={styles.permissionButton}
-        >
-          <Text style={styles.permissionButtonText}>Cấp quyền</Text>
-        </TouchableOpacity>
-      </View>
+      <SafeAreaView style={styles.permissionSafeArea} edges={["top", "bottom"]}>
+        <View style={styles.permissionContainer}>
+          <Text style={styles.permissionText}>
+            Cần cấp quyền truy cập camera
+          </Text>
+          <TouchableOpacity
+            onPress={requestPermission}
+            style={styles.permissionButton}
+          >
+            <Text style={styles.permissionButtonText}>Cấp quyền</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -150,11 +154,17 @@ export default function HomeScreen({ refreshProfile, onOpenPreview }) {
 
 const styles = StyleSheet.create({
   container: { height, width, backgroundColor: "#000" },
+  permissionSafeArea: {
+    flex: 1,
+    backgroundColor: "#000",
+    paddingTop: 40,
+  },
   permissionContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#000",
+    paddingHorizontal: 40,
   },
   permissionText: { color: "#fff", fontSize: 18, marginBottom: 10 },
   permissionButton: {
