@@ -12,6 +12,7 @@ import {
   TouchableWithoutFeedback,
   View,
   Keyboard,
+  ActivityIndicator,
 } from "react-native";
 import { useState } from "react";
 
@@ -20,12 +21,17 @@ const { height, width } = Dimensions.get("window");
 export default function PreviewScreen({ photoUri, onSend, onCancel }) {
   const [caption, setCaption] = useState("");
   const [visibility, setVisibility] = useState("public");
+  const [isSending, setIsSending] = useState(false); // 🧩 khóa gửi nhiều lần
 
   const sendPost = async () => {
+    if (isSending) return; // tránh spam
+    setIsSending(true);
+
     try {
       const token = await AsyncStorage.getItem("token");
       if (!token) {
         console.warn("⚠️ Không có token, người dùng chưa đăng nhập.");
+        setIsSending(false);
         return;
       }
 
@@ -48,8 +54,10 @@ export default function PreviewScreen({ photoUri, onSend, onCancel }) {
       });
 
       const result = await response.json();
+
       if (!response.ok) {
         console.error("❌ Lỗi gửi bài:", result);
+        setIsSending(false);
         return;
       }
 
@@ -57,6 +65,8 @@ export default function PreviewScreen({ photoUri, onSend, onCancel }) {
       if (onSend) onSend();
     } catch (error) {
       console.error("❌ Lỗi kết nối:", error);
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -82,12 +92,24 @@ export default function PreviewScreen({ photoUri, onSend, onCancel }) {
           </View>
 
           <View style={styles.bottomControls}>
-            <TouchableOpacity onPress={onCancel}>
-              <Ionicons name="close-outline" size={40} color="#fff" />
+            <TouchableOpacity onPress={onCancel} disabled={isSending}>
+              <Ionicons
+                name="close-outline"
+                size={40}
+                color={isSending ? "#777" : "#fff"}
+              />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.sendButton} onPress={sendPost}>
-              <Ionicons name="send-outline" size={30} color="#000" />
+            <TouchableOpacity
+              style={[styles.sendButton, isSending && { opacity: 0.5 }]}
+              onPress={sendPost}
+              disabled={isSending}
+            >
+              {isSending ? (
+                <ActivityIndicator color="#000" size="small" />
+              ) : (
+                <Ionicons name="send-outline" size={30} color="#000" />
+              )}
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -95,6 +117,7 @@ export default function PreviewScreen({ photoUri, onSend, onCancel }) {
               onPress={() =>
                 setVisibility(visibility === "public" ? "private" : "public")
               }
+              disabled={isSending}
             >
               <Ionicons
                 name={

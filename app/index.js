@@ -8,25 +8,63 @@ export default function Index() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 🔥 Hàm kiểm tra Token
     const checkAuthStatus = async () => {
       try {
-        // 1. Đọc token từ AsyncStorage
         const token = await AsyncStorage.getItem("token");
 
-        // 2. Kiểm tra token có tồn tại và hợp lệ không
-        const isLoggedIn = !!token; // Biến thành true nếu token tồn tại, false nếu null/undefined
+        // Nếu không có token thì đưa về welcome ngay
+        if (!token) {
+          router.replace("/welcome");
+          return;
+        }
 
-        // 3. Chuyển hướng
-        // Sử dụng setTimeout ngắn để đảm bảo React Router đã sẵn sàng
-        const timer = setTimeout(() => {
-          router.replace(isLoggedIn ? "/app" : "/welcome");
-        }, 50); // Đặt thời gian ngắn (ví dụ: 50ms)
+        // Gọi endpoint refresh-token với body { refreshToken: token }
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        try {
+          const resp = await fetch(
+            "https://memora-be.onrender.com/auth/refresh-token",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ refreshToken: token }),
+              signal: controller.signal,
+            }
+          );
+          clearTimeout(timeoutId);
 
-        return () => clearTimeout(timer);
-      } catch (error) {
-        console.error("❌ Lỗi đọc token:", error);
-        // Nếu có lỗi khi đọc, coi như chưa đăng nhập và chuyển hướng đến /welcome
+          if (!resp.ok) {
+            // refresh thất bại (401, 400, 500...)
+            console.warn("Refresh failed:", resp.status);
+            await AsyncStorage.removeItem("token");
+            router.replace("/welcome");
+            return;
+          }
+
+          const json = await resp.json();
+          const newToken = json?.data?.token ?? null;
+
+          if (!newToken) {
+            console.warn("No token returned from refresh:", json);
+            await AsyncStorage.removeItem("token");
+            router.replace("/welcome");
+            return;
+          }
+
+          // Lưu token mới và vào app
+          await AsyncStorage.setItem("token", newToken);
+          router.replace("/app");
+          return;
+        } catch (err) {
+          // timeout hoặc lỗi mạng
+          console.error("Error calling refresh-token:", err);
+          await AsyncStorage.removeItem("token");
+          router.replace("/welcome");
+          return;
+        }
+      } catch (err) {
+        console.error("Error reading token:", err);
+        await AsyncStorage.removeItem("token");
         router.replace("/welcome");
       } finally {
         setLoading(false);
@@ -34,9 +72,9 @@ export default function Index() {
     };
 
     checkAuthStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Trong khi chờ đọc token, hiển thị Loading
   if (loading) {
     return (
       <View style={styles.container}>

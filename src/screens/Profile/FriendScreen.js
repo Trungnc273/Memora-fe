@@ -12,24 +12,23 @@ import {
   Animated,
   Keyboard,
   Alert,
+  Modal,
+  Pressable,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons, FontAwesome5 } from "@expo/vector-icons";
-import { jwtDecode } from "jwt-decode";
+import jwtDecode from "jwt-decode"; // note: you had `import { jwtDecode } from "jwt-decode";` which is incorrect
 
 export default function FriendScreen({ refreshFlag = 0 }) {
   const [friends, setFriends] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // follower-list: người gửi yêu cầu đến bạn (incoming requests)
   const [followers, setFollowers] = useState([]);
   const [followersLoading, setFollowersLoading] = useState(true);
 
-  // follow-list: danh sách follow (outgoing requests) - endpoint bạn yêu cầu
   const [followList, setFollowList] = useState([]);
   const [followListLoading, setFollowListLoading] = useState(true);
 
-  // Search related
   const [isSearching, setIsSearching] = useState(false);
   const [searchValue, setSearchValue] = useState("");
   const [searchResults, setSearchResults] = useState([]);
@@ -37,22 +36,16 @@ export default function FriendScreen({ refreshFlag = 0 }) {
   const abortControllerRef = useRef(null);
   const debounceRef = useRef(null);
 
-  // Current user id (from token)
   const [currentUserId, setCurrentUserId] = useState(null);
-
-  // Loading map for per-user add/accept button
   const [actionLoadingMap, setActionLoadingMap] = useState({});
-
   const [inputWidth] = useState(new Animated.Value(1));
 
-  // derive set of friend ids for quick check
   const friendIdSet = useMemo(() => {
     const s = new Set();
     friends.forEach((f) => f._id && s.add(String(f._id)));
     return s;
   }, [friends]);
 
-  // derive sets for follower-list and follow-list
   const followerIdSet = useMemo(() => {
     const s = new Set();
     followers.forEach((f) => f._id && s.add(String(f._id)));
@@ -64,6 +57,12 @@ export default function FriendScreen({ refreshFlag = 0 }) {
     followList.forEach((f) => f._id && s.add(String(f._id)));
     return s;
   }, [followList]);
+
+  // ------------------- modal state for "X" menu and confirm -------------------
+  const [actionModalVisible, setActionModalVisible] = useState(false);
+  const [confirmModalVisible, setConfirmModalVisible] = useState(false);
+  const [selectedFriend, setSelectedFriend] = useState(null);
+  const [unfollowLoading, setUnfollowLoading] = useState(false);
 
   // ------------------ API fetchers ------------------
   const fetchFriends = async () => {
@@ -116,7 +115,6 @@ export default function FriendScreen({ refreshFlag = 0 }) {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       const json = await res.json();
-      // assume API returns { followList: [...] } or an array - be flexible
       if (json && json.followList) setFollowList(json.followList);
       else if (Array.isArray(json)) setFollowList(json);
       else setFollowList([]);
@@ -156,7 +154,7 @@ export default function FriendScreen({ refreshFlag = 0 }) {
         setCurrentUserId(String(idFromToken));
         return String(idFromToken);
       }
-      // fallback: /user (may not include _id)
+      // fallback: /user
       try {
         const res = await fetch("https://memora-be.onrender.com/user", {
           headers: { Authorization: `Bearer ${token}` },
@@ -170,9 +168,7 @@ export default function FriendScreen({ refreshFlag = 0 }) {
             return String(id);
           }
         }
-      } catch (e) {
-        // ignore
-      }
+      } catch (e) {}
       return null;
     } catch (err) {
       console.log("Không thể lấy current user id:", err);
@@ -180,7 +176,6 @@ export default function FriendScreen({ refreshFlag = 0 }) {
     }
   };
 
-  // Initial fetch + refetch when refreshFlag changes
   useEffect(() => {
     fetchCurrentUserId().catch(() => {});
     fetchFriends();
@@ -249,7 +244,6 @@ export default function FriendScreen({ refreshFlag = 0 }) {
         return;
       }
 
-      // ensure id present for correct self detection
       if (!currentUserId) {
         await fetchCurrentUserId();
       }
@@ -269,7 +263,6 @@ export default function FriendScreen({ refreshFlag = 0 }) {
       setSearchResults(Array.isArray(json) ? json : []);
     } catch (err) {
       if (err.name === "AbortError") {
-        // canceled
       } else {
         console.log("❌ Lỗi search:", err);
       }
@@ -308,7 +301,6 @@ export default function FriendScreen({ refreshFlag = 0 }) {
         throw new Error(`Server lỗi: ${res.status} ${text}`);
       }
 
-      // success: refresh friends + followers + followList to keep UI consistent
       await Promise.all([fetchFriends(), fetchFollowers(), fetchFollowList()]);
     } catch (err) {
       console.log("❌ Lỗi follow action:", err);
@@ -319,7 +311,6 @@ export default function FriendScreen({ refreshFlag = 0 }) {
   };
 
   const handleAccept = async (followerId) => {
-    // chấp nhận follower (backend yêu cầu follow body)
     await doFollowAction(followerId);
   };
 
@@ -340,13 +331,84 @@ export default function FriendScreen({ refreshFlag = 0 }) {
     Keyboard.dismiss();
   };
 
+  // ------------------ UNFOLLOW (xóa bạn) ------------------
+  const doUnfollow = async (userBId) => {
+    if (!userBId) return;
+    setUnfollowLoading(true);
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) throw new Error("No token");
+
+      const res = await fetch(
+        "https://memora-be.onrender.com/follow/unfollow",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ userB: userBId }),
+        }
+      );
+
+      const text = await res.text();
+      if (!res.ok) {
+        console.error("Unfollow error:", res.status, text);
+        throw new Error(text || "Unfollow failed");
+      }
+
+      // remove friend locally
+      setFriends((prev) =>
+        prev.filter((f) => String(f._id) !== String(userBId))
+      );
+      // refresh lists to be safe
+      await Promise.all([fetchFriends(), fetchFollowers(), fetchFollowList()]);
+
+      Alert.alert("Xóa bạn", "Đã xóa bạn thành công.");
+    } catch (err) {
+      console.error("❌ Unfollow failed:", err);
+      Alert.alert("Lỗi", "Không thể xóa bạn. Thử lại sau.");
+    } finally {
+      setUnfollowLoading(false);
+      setConfirmModalVisible(false);
+      setActionModalVisible(false);
+      setSelectedFriend(null);
+    }
+  };
+
+  // ------------------ UI handlers for action sheet ------------------
+  const onPressRemoveIcon = (friend) => {
+    setSelectedFriend(friend);
+    setActionModalVisible(true);
+  };
+
+  const onChooseHide = () => {
+    // placeholder: thực hiện hide friend nếu bạn có endpoint
+    Alert.alert("Ẩn bạn bè", "Chức năng ẩn chưa được triển khai.");
+    setActionModalVisible(false);
+    setSelectedFriend(null);
+  };
+
+  const onChooseBlock = async () => {
+    // placeholder block: bạn có thể gọi API blockUser ở đây
+    Alert.alert("Chặn bạn bè", "Chức năng chặn chưa được triển khai.");
+    setActionModalVisible(false);
+    setSelectedFriend(null);
+  };
+
+  const onChooseDelete = () => {
+    // show confirm modal
+    setActionModalVisible(false);
+    setConfirmModalVisible(true);
+  };
+
   // ------------------ render items ------------------
   const renderResultItem = ({ item }) => {
     const itemId = item && item._id ? String(item._id) : null;
     const isSelf = currentUserId && itemId && String(currentUserId) === itemId;
     const isFriend = itemId ? friendIdSet.has(itemId) : false;
-    const isFollower = itemId ? followerIdSet.has(itemId) : false; // incoming request
-    const isFollowingPending = itemId ? followListIdSet.has(itemId) : false; // outgoing request
+    const isFollower = itemId ? followerIdSet.has(itemId) : false;
+    const isFollowingPending = itemId ? followListIdSet.has(itemId) : false;
     const actionLoading = !!actionLoadingMap[itemId];
 
     return (
@@ -368,12 +430,6 @@ export default function FriendScreen({ refreshFlag = 0 }) {
           </Text>
         </TouchableOpacity>
 
-        {/* Priority:
-            1) self -> show nothing
-            2) friend -> "Đã là bạn"
-            3) if in follower-list or follow-list -> "Chờ chấp nhận"
-            4) else -> "+ Thêm"
-        */}
         {isSelf ? (
           <View style={{ width: 1, height: 1 }} />
         ) : isFriend ? (
@@ -435,7 +491,7 @@ export default function FriendScreen({ refreshFlag = 0 }) {
     );
   };
 
-  // ------------------ UI ------------------
+  // ------------------ main UI ------------------
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -569,7 +625,7 @@ export default function FriendScreen({ refreshFlag = 0 }) {
                     </Text>
                   </View>
 
-                  <TouchableOpacity>
+                  <TouchableOpacity onPress={() => onPressRemoveIcon(item)}>
                     <Ionicons name="close" size={20} color="#aaa" />
                   </TouchableOpacity>
                 </TouchableOpacity>
@@ -581,10 +637,102 @@ export default function FriendScreen({ refreshFlag = 0 }) {
           )}
         </>
       )}
+
+      {/* Action sheet modal (like image1 + image2) */}
+      <Modal
+        visible={actionModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setActionModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => {
+            setActionModalVisible(false);
+            setSelectedFriend(null);
+          }}
+        />
+        <View style={styles.actionSheet}>
+          <Text style={styles.actionTitle}> </Text>
+
+          <TouchableOpacity style={styles.actionRow} onPress={onChooseHide}>
+            <View style={styles.actionIcon}>
+              <Ionicons name="eye-off-outline" size={20} color="#fff" />
+            </View>
+            <Text style={styles.actionText}>Ẩn bạn bè</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.actionRow} onPress={onChooseDelete}>
+            <View style={styles.actionIcon}>
+              <Ionicons name="person-remove-outline" size={20} color="#fff" />
+            </View>
+            <Text style={styles.actionText}>Xóa bạn</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionRow, { borderBottomWidth: 0 }]}
+            onPress={onChooseBlock}
+          >
+            <View style={styles.actionIcon}>
+              <Ionicons name="ban-outline" size={20} color="#ff4444" />
+            </View>
+            <Text style={[styles.actionText, { color: "#ff4444" }]}>
+              Chặn bạn bè
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
+      {/* Confirm delete modal (image 3) */}
+      <Modal
+        visible={confirmModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setConfirmModalVisible(false)}
+      >
+        <View style={styles.confirmOverlay}>
+          <View style={styles.confirmBox}>
+            <Text style={styles.confirmTitle}>
+              {`Xóa ${
+                selectedFriend?.display_name || "người này"
+              } khỏi Locket của bạn?`}
+            </Text>
+            <Text style={styles.confirmText}>
+              Các bạn sẽ không còn có thể gửi ảnh cho nhau trên Locket. Lịch sử
+              của bạn sẽ có thể được phục hồi nếu các bạn thêm lại nhau.
+            </Text>
+
+            <View style={styles.confirmButtons}>
+              <TouchableOpacity
+                style={styles.confirmCancel}
+                onPress={() => {
+                  setConfirmModalVisible(false);
+                  setSelectedFriend(null);
+                }}
+              >
+                <Text style={styles.confirmCancelText}>Hủy</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.confirmDelete}
+                onPress={() => doUnfollow(selectedFriend?._id)}
+                disabled={unfollowLoading}
+              >
+                {unfollowLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.confirmDeleteText}>Xóa</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
+// styles (kept and added modal styles)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -767,5 +915,96 @@ const styles = StyleSheet.create({
   mutedText: {
     color: "#aaa",
     fontSize: 13,
+  },
+
+  // modal / action sheet styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+  actionSheet: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 40,
+    backgroundColor: "#1E1E1E",
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.03)",
+  },
+  actionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.03)",
+  },
+  actionIcon: {
+    width: 36,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 10,
+  },
+  actionText: {
+    color: "#fff",
+    fontSize: 18,
+  },
+
+  // confirm modal
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 28,
+  },
+  confirmBox: {
+    width: "100%",
+    backgroundColor: "#1E1E1E",
+    borderRadius: 14,
+    padding: 20,
+  },
+  confirmTitle: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 12,
+  },
+  confirmText: {
+    color: "#ddd",
+    fontSize: 14,
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  confirmButtons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  confirmCancel: {
+    flex: 1,
+    marginRight: 8,
+    backgroundColor: "#2C2C2C",
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  confirmCancelText: {
+    color: "#fff",
+    fontSize: 16,
+  },
+  confirmDelete: {
+    flex: 1,
+    marginLeft: 8,
+    backgroundColor: "#d9534f",
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  confirmDeleteText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
   },
 });
